@@ -21,7 +21,7 @@ temporal-sample/worker
 
 Start the workflow:
 ```sh
-temporal-sample/starter
+temporal-sample/starter/cmd
 ❯ go run .
 ```
 
@@ -93,3 +93,86 @@ Working in parallel......
 9:59AM INF Started workflow RunID=954a4c37-2f96-4978-b2fd-2b65d347400f WorkflowID=workflow-6a7885e9-f5cc-45aa-8b2d-ea3bff3605f7
 9:59AM INF Workflow completed result={"Value":"+[\u003cRicardo - 279\u003e - 256]+[\u003cRicardo - 279\u003e - 437]+[\u003cRicardo - 279\u003e - 740]+[\u003cRicardo - 279\u003e - 795]+[\u003cRicardo - 279\u003e - 738]+[\u003cRicardo - 279\u003e - 637]+[\u003cRicardo - 279\u003e - 948]+[\u003cRicardo - 279\u003e - 979]+[\u003cRicardo - 279\u003e - 255]+[\u003cRicardo - 279\u003e - 949]"}
 ```
+
+
+## Web service
+
+Run the worker normally, then run the web service:
+```sh
+go run starter/service/main.go
+```
+
+Then, you can call the web service:
+```sh
+http -v POST localhost:8088 <<< '                                                       
+quote> {"name": "ricardo"}'
+```
+
+You should see:
+```sh
+POST / HTTP/1.1
+Accept: application/json, */*;q=0.5
+Accept-Encoding: gzip, deflate
+Connection: keep-alive
+Content-Length: 21
+Content-Type: application/json
+Host: localhost:8088
+User-Agent: HTTPie/3.2.2
+
+{
+    "name": "ricardo"
+}
+
+
+HTTP/1.1 202 Accepted
+Content-Length: 154
+Content-Type: text/plain; charset=utf-8
+Date: Sun, 07 Jan 2024 21:11:42 GMT
+
+{
+    "message": "Workflow started",
+    "run_id": "3dedcd0f-50bd-40c9-abd5-9214cd4e8e7c",
+    "status": 202,
+    "workflow_id": "workflow-b4f3b8b1-534c-45e5-b8fc-0f15c8a55114"
+}
+```
+
+Then, you can get the result:
+```sh
+http  'localhost:8088/?run_id=3dedcd0f-50bd-40c9-abd5-9214cd4e8e7c&workflow_id=workflow-b4f3b8b1-534c-45e5-b8fc-0f15c8a55114'
+```
+
+You should see:
+```sh
+HTTP/1.1 200 OK
+Content-Length: 506
+Content-Type: text/plain; charset=utf-8
+Date: Sun, 07 Jan 2024 21:16:08 GMT
+
+{
+    "message": "Workflow completed",
+    "result": "+[<ricardo - 227> - 969]+[<ricardo - 227> - 643]+[<ricardo - 227> - 964]+[<ricardo - 227> - 695]+[<ricardo - 227> - 30]+[<ricardo - 227> - 403]+[<ricardo - 227> - 29]+[<ricardo - 227> - 157]+[<ricardo - 227> - 928]+[<ricardo - 227> - 499]",
+    "run_id": "3dedcd0f-50bd-40c9-abd5-9214cd4e8e7c",
+    "status": 200,
+    "workflow_id": "workflow-b4f3b8b1-534c-45e5-b8fc-0f15c8a55114"
+}
+```
+
+## Load testing with vegeta
+
+```sh
+go run starter/service/main.go
+```
+
+```sh
+# run the load test
+echo "POST http://localhost:8088/ Content-Type: application/json" | vegeta attack -body ./starter/service/body.json -rate 100 -duration 1s | tee results.bin | vegeta report
+# save the results in a json file (metrics.json)
+vegeta report -type=json results.bin > metrics.json
+# plot the results. View the plot.html file in a browser
+cat results.bin | vegeta plot > plot.html
+# plot the results as a histogram (in the terminal)
+cat results.bin | vegeta report -type="hist[0,20ms,40ms,60ms,80ms,100ms,150ms,200ms]"
+```
+
+

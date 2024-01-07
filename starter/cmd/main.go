@@ -12,11 +12,13 @@ import (
 )
 
 func main() {
-
+	ctx := context.Background()
 	log.Logger = common.Logger()
 
 	logger := logur.LoggerToKV(logrusadapter.New(common.Logger()))
-	c, err := client.Dial(client.Options{Logger: logger})
+	c, err := client.Dial(client.Options{
+		Logger: logger,
+	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Unable to create client")
 	}
@@ -31,7 +33,7 @@ func main() {
 		Name: "Ricardo",
 	}
 
-	we, err := c.ExecuteWorkflow(context.Background(), workflowOptions, common.Workflow, wInput)
+	we, err := c.ExecuteWorkflow(ctx, workflowOptions, common.Workflow, wInput)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Unable to execute workflow")
 	}
@@ -42,7 +44,7 @@ func main() {
 
 	// Synchronously wait for the workflow completion.
 	var result common.WorkflowOutput
-	err = we.Get(context.Background(), &result)
+	err = we.Get(ctx, &result)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Unable get workflow result")
 	}

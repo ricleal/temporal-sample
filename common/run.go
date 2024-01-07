@@ -13,7 +13,12 @@ import (
 )
 
 func Logger() zerolog.Logger {
-	return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
+	return zerolog.New(zerolog.ConsoleWriter{
+		Out:     os.Stderr,
+		NoColor: false,
+	}).With().
+		Timestamp().
+		Logger()
 }
 
 // Workflow input
