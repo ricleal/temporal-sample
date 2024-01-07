@@ -4,7 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -27,15 +32,42 @@ type Body struct {
 	Name string `json:"name"`
 }
 
+var (
+	once sync.Once
+	c    client.Client
+)
+
 func main() {
-	http.HandleFunc("/", handlePost)
-	err := http.ListenAndServe(":8088", nil)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Unable to start server")
+	// Create a context that will be canceled when termination signals are received
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	srv := &http.Server{
+		Addr: "127.0.0.1:8088",
+		BaseContext: func(_ net.Listener) context.Context {
+			return ctx
+		},
 	}
+	http.HandleFunc("/", handleWorkflow)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("Unable to start server")
+		}
+	}()
+
+	// Wait for either the server to close gracefully or the context to be canceled
+	<-ctx.Done()
+	log.Info().Msg("Shutting down server")
+
+	srv.Shutdown(ctx)
+	log.Info().Msg("Server gracefully stopped")
+	// close the connection to Temporal server
+	c.Close()
 }
 
-func handlePost(w http.ResponseWriter, r *http.Request) {
+// handleWorkflow handles the workflow execution: POST to start a new workflow execution, GET to get the result of a workflow execution
+func handleWorkflow(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" && r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(Response{Status: http.StatusMethodNotAllowed, Message: "Method not allowed"})
@@ -43,19 +75,20 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	log.Logger = common.Logger()
 
-	logger := logur.LoggerToKV(logrusadapter.New(common.Logger()))
-
-	c, err := client.Dial(client.Options{
-		Logger: logger,
+	once.Do(func() {
+		log.Logger = common.Logger()
+		logger := logur.LoggerToKV(logrusadapter.New(common.Logger()))
+		var err error
+		c, err = client.Dial(client.Options{
+			Logger: logger,
+		})
+		if err != nil {
+			httpError(w, http.StatusInternalServerError, "Unable to create client")
+			log.Error().Err(err).Msg("Unable to create client")
+			return
+		}
 	})
-	if err != nil {
-		httpError(w, http.StatusInternalServerError, "Unable to create client")
-		log.Error().Err(err).Msg("Unable to create client")
-		return
-	}
-	defer c.Close()
 
 	// Create a new workflow execution
 	if r.Method == "POST" {
@@ -73,6 +106,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handlePOST starts a new workflow execution
 func handlePOST(ctx context.Context, w http.ResponseWriter, r *http.Request, c client.Client) error {
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        "workflow-" + uuid.New().String(),
@@ -104,6 +138,7 @@ func handlePOST(ctx context.Context, w http.ResponseWriter, r *http.Request, c c
 	return nil
 }
 
+// handleGET gets the result of a workflow execution
 func handleGET(ctx context.Context, w http.ResponseWriter, r *http.Request, c client.Client) error {
 	workflowID := r.URL.Query().Get("workflow_id")
 	runID := r.URL.Query().Get("run_id")
