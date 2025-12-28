@@ -23,15 +23,15 @@ import (
 )
 
 type Response struct {
-	Status     int    `json:"status"`
-	Message    string `json:"message"`
-	WorkflowID string `json:"workflow_id,omitempty"`
-	RunID      string `json:"run_id,omitempty"`
-	Result     string `json:"result,omitempty"`
+	Status     int                    `json:"status"`
+	Message    string                 `json:"message"`
+	WorkflowID string                 `json:"workflow_id,omitempty"`
+	RunID      string                 `json:"run_id,omitempty"`
+	Data       *common.WorkflowOutput `json:"data,omitempty"`
 }
 
 type Body struct {
-	Name string `json:"name"`
+	FibonacciIndex int `json:"fibonacci_index,omitempty"`
 }
 
 var (
@@ -130,8 +130,13 @@ func handlePOST(ctx context.Context, w http.ResponseWriter, r *http.Request, c c
 		return fmt.Errorf("unable to parse request body: %v", err)
 	}
 
+	// Default to Fibonacci(15) if not specified
+	if body.FibonacciIndex == 0 {
+		body.FibonacciIndex = 15
+	}
+
 	wInput := &common.WorkflowInput{
-		Name: body.Name,
+		FibonacciIndex: body.FibonacciIndex,
 	}
 
 	we, err := c.ExecuteWorkflow(ctx, workflowOptions, common.Workflow, wInput)
@@ -167,7 +172,7 @@ func handleGET(ctx context.Context, w http.ResponseWriter, r *http.Request, c cl
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(Response{Status: http.StatusOK, Message: "Workflow completed", WorkflowID: we.GetID(), RunID: we.GetRunID(), Result: result.Value})
+	json.NewEncoder(w).Encode(Response{Status: http.StatusOK, Message: "Workflow completed", WorkflowID: we.GetID(), RunID: we.GetRunID(), Data: &result})
 	return nil
 }
 

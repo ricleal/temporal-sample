@@ -1,10 +1,10 @@
-// Command starter executes a Temporal workflow synchronously.
-// It connects to the Temporal server, starts a workflow execution,
-// and waits for the workflow to complete before printing the result.
 package main
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
 
 	"temporal-sample/common"
 
@@ -14,6 +14,10 @@ import (
 )
 
 func main() {
+	// Parse command-line flags
+	fibIndex := flag.Int("n", 20, "Fibonacci index to calculate (0-1000)")
+	flag.Parse()
+
 	ctx := context.Background()
 	logger := common.Logger()
 
@@ -32,7 +36,7 @@ func main() {
 	}
 
 	wInput := &common.WorkflowInput{
-		Name: "Ricardo",
+		FibonacciIndex: *fibIndex,
 	}
 
 	we, err := c.ExecuteWorkflow(ctx, workflowOptions, common.Workflow, wInput)
@@ -49,5 +53,15 @@ func main() {
 		logger.Error("Unable get workflow result", "error", err)
 		panic(err)
 	}
-	logger.Info("Workflow completed", "result", result)
+
+	// Marshal result to JSON for readable output
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		logger.Error("Unable to marshal result to JSON", "error", err)
+		panic(err)
+	}
+
+	logger.Info("Workflow completed")
+	fmt.Println("\nResult:")
+	fmt.Println(string(resultJSON))
 }
