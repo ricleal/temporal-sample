@@ -1,22 +1,22 @@
+// Command worker starts a Temporal worker that listens for and executes workflow tasks.
+// It registers the workflow and activity implementations and processes tasks from
+// the configured task queue until interrupted.
 package main
 
 import (
-	"github.com/rs/zerolog/log"
-
 	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/log"
 	"go.temporal.io/sdk/worker"
-	logrusadapter "logur.dev/adapter/zerolog"
-	"logur.dev/logur"
 
 	"temporal-sample/common"
 )
 
 func main() {
-
-	logger := logur.LoggerToKV(logrusadapter.New(common.Logger()))
-	c, err := client.Dial(client.Options{Logger: logger})
+	logger := common.Logger()
+	c, err := client.Dial(client.Options{Logger: log.NewStructuredLogger(logger)})
 	if err != nil {
-		log.Fatal().Err(err).Msg("Unable to create client")
+		logger.Error("Unable to create client", "error", err)
+		panic(err)
 	}
 	defer c.Close()
 
@@ -29,8 +29,9 @@ func main() {
 	// Run the worker in a blocking fashion. Stop the worker when interruptCh receives signal.
 	err = w.Run(worker.InterruptCh())
 	if err != nil {
-		log.Fatal().Err(err).Msg("Unable to start worker")
+		logger.Error("Unable to start worker", "error", err)
+		panic(err)
 	}
 
-	log.Info().Msg("Shutting down worker")
+	logger.Info("Shutting down worker")
 }

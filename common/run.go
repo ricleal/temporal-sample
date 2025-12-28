@@ -3,22 +3,21 @@ package common
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"os"
 	"time"
 
-	"github.com/rs/zerolog"
+	"github.com/lmittmann/tint"
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/workflow"
 )
 
-func Logger() zerolog.Logger {
-	return zerolog.New(zerolog.ConsoleWriter{
-		Out:     os.Stderr,
-		NoColor: false,
-	}).With().
-		Timestamp().
-		Logger()
+func Logger() *slog.Logger {
+	return slog.New(tint.NewHandler(os.Stderr, &tint.Options{
+		Level:      slog.LevelInfo,
+		TimeFormat: time.Kitchen,
+	}))
 }
 
 // Workflow input
@@ -41,7 +40,6 @@ type ActivityOutput struct {
 
 // Workflow implementation using activity and parallel activities
 func Workflow(ctx workflow.Context, wInput *WorkflowInput) (*WorkflowOutput, error) {
-
 	ao := workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Second,
 	}

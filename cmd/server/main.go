@@ -1,9 +1,13 @@
+// Command service provides an HTTP API for Temporal workflow management.
+// It exposes REST endpoints to start new workflow executions (POST) and
+// query workflow results (GET), running on port 8888 by default.
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -12,10 +16,8 @@ import (
 	"syscall"
 
 	"github.com/google/uuid"
-	"github.com/rs/zerolog/log"
 	"go.temporal.io/sdk/client"
-	logrusadapter "logur.dev/adapter/zerolog"
-	"logur.dev/logur"
+	"go.temporal.io/sdk/log"
 
 	"temporal-sample/common"
 )
@@ -33,8 +35,9 @@ type Body struct {
 }
 
 var (
-	once sync.Once
-	c    client.Client
+	once   sync.Once
+	c      client.Client
+	logger *slog.Logger
 )
 
 func main() {
@@ -42,8 +45,14 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	logger = common.Logger()
+
+	myServicePort := os.Getenv("MY_SERVICE_PORT")
+	if myServicePort == "" {
+		myServicePort = "8888"
+	}
 	srv := &http.Server{
-		Addr: "127.0.0.1:8088",
+		Addr: "127.0.0.1:" + myServicePort,
 		BaseContext: func(_ net.Listener) context.Context {
 			return ctx
 		},
@@ -52,16 +61,19 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("Unable to start server")
+			logger.Error("Unable to start server", "error", err)
+			panic(err)
 		}
 	}()
 
+	logger.Info("Server started", "port", myServicePort)
+
 	// Wait for either the server to close gracefully or the context to be canceled
 	<-ctx.Done()
-	log.Info().Msg("Shutting down server")
+	logger.Info("Shutting down server")
 
 	srv.Shutdown(ctx)
-	log.Info().Msg("Server gracefully stopped")
+	logger.Info("Server gracefully stopped")
 	// close the connection to Temporal server
 	c.Close()
 }
@@ -69,6 +81,7 @@ func main() {
 // handleWorkflow handles the workflow execution: POST to start a new workflow execution, GET to get the result of a workflow execution
 func handleWorkflow(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" && r.Method != "GET" {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		json.NewEncoder(w).Encode(Response{Status: http.StatusMethodNotAllowed, Message: "Method not allowed"})
 		return
@@ -77,15 +90,13 @@ func handleWorkflow(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	once.Do(func() {
-		log.Logger = common.Logger()
-		logger := logur.LoggerToKV(logrusadapter.New(common.Logger()))
 		var err error
 		c, err = client.Dial(client.Options{
-			Logger: logger,
+			Logger: log.NewStructuredLogger(logger),
 		})
 		if err != nil {
 			httpError(w, http.StatusInternalServerError, "Unable to create client")
-			log.Error().Err(err).Msg("Unable to create client")
+			logger.Error("Unable to create client", "error", err)
 			return
 		}
 	})
@@ -93,7 +104,7 @@ func handleWorkflow(w http.ResponseWriter, r *http.Request) {
 	// Create a new workflow execution
 	if r.Method == "POST" {
 		if err := handlePOST(ctx, w, r, c); err != nil {
-			log.Error().Err(err).Msg("Unable to handle POST")
+			logger.Error("Unable to handle POST", "error", err)
 		}
 		return
 	}
@@ -101,7 +112,7 @@ func handleWorkflow(w http.ResponseWriter, r *http.Request) {
 	// Get workflow execution result
 	if r.Method == "GET" {
 		if err := handleGET(ctx, w, r, c); err != nil {
-			log.Error().Err(err).Msg("Unable to handle GET")
+			logger.Error("Unable to handle GET", "error", err)
 		}
 	}
 }
@@ -128,11 +139,9 @@ func handlePOST(ctx context.Context, w http.ResponseWriter, r *http.Request, c c
 		httpError(w, http.StatusInternalServerError, "Unable to execute workflow")
 		return fmt.Errorf("unable to execute workflow: %v", err)
 	}
-	log.Info().
-		Str("WorkflowID", we.GetID()).
-		Str("RunID", we.GetRunID()).
-		Msg("Started workflow")
+	logger.Info("Started workflow", "WorkflowID", we.GetID(), "RunID", we.GetRunID())
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(Response{Status: http.StatusAccepted, Message: "Workflow started", WorkflowID: we.GetID(), RunID: we.GetRunID()})
 	return nil
@@ -156,12 +165,14 @@ func handleGET(ctx context.Context, w http.ResponseWriter, r *http.Request, c cl
 		return fmt.Errorf("unable get workflow result: %v", err)
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(Response{Status: http.StatusOK, Message: "Workflow completed", WorkflowID: we.GetID(), RunID: we.GetRunID(), Result: result.Value})
 	return nil
 }
 
 func httpError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(Response{Status: status, Message: message})
 }
