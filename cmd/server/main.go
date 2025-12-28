@@ -121,7 +121,7 @@ func handleWorkflow(w http.ResponseWriter, r *http.Request) {
 func handlePOST(ctx context.Context, w http.ResponseWriter, r *http.Request, c client.Client) error {
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        "workflow-" + uuid.New().String(),
-		TaskQueue: common.TASK_QUEUE,
+		TaskQueue: common.TaskQueue,
 	}
 
 	var body Body

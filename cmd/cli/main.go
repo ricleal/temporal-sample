@@ -28,7 +28,7 @@ func main() {
 
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        "workflow-" + uuid.New().String(),
-		TaskQueue: common.TASK_QUEUE,
+		TaskQueue: common.TaskQueue,
 	}
 
 	wInput := &common.WorkflowInput{

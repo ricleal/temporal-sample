@@ -1,4 +1,6 @@
 package common
 
-const TASK_QUEUE = "sample_task_queue"
-const N = 10
+const (
+	TaskQueue          = "sample_task_queue"
+	ParallelActivities = 10
+)
